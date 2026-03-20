@@ -82,7 +82,7 @@ for i in range(num_sizes):
 st.divider()
 
 # ------------------------------------------------
-# STABLE INPUT UI (NO TABLE)
+# INPUT UI (STABLE + CORRECT)
 # ------------------------------------------------
 
 st.markdown("## Enter Quantity (Color × Size)")
@@ -94,29 +94,34 @@ if all(colors) and all(sizes):
 
     with st.form("matrix_form"):
 
-        input_data = {}
-
         for color in colors:
 
             st.markdown(f"### {color}")
 
             cols = st.columns(len(sizes))
-            row = {}
 
             for i, size in enumerate(sizes):
 
-                row[size] = cols[i].number_input(
+                cols[i].number_input(
                     f"{size}",
                     min_value=0,
-                    key=f"{color}_{size}"
+                    key=f"{color}_{size}"  # ✅ correct usage
                 )
-
-            input_data[color] = row
 
         submitted = st.form_submit_button("Save Matrix")
 
         if submitted:
-            st.session_state.saved_data = input_data
+
+            final_data = {}
+
+            for color in colors:
+                row = {}
+                for size in sizes:
+                    row[size] = st.session_state.get(f"{color}_{size}", 0)
+                final_data[color] = row
+
+            st.session_state.saved_data = final_data
+
             st.success("Data saved successfully!")
 
 else:
@@ -141,7 +146,7 @@ if st.button("Generate Packing Plan"):
     st.markdown(f"## Packing Plan - Order {order_id}")
 
     # ------------------------------------------------
-    # SIZE SPLIT DISPLAY
+    # SIZE SPLIT DISPLAY (WITH TOTAL)
     # ------------------------------------------------
 
     st.markdown("### Size Split Matrix")
@@ -150,8 +155,14 @@ if st.button("Generate Packing Plan"):
 
     for color in colors:
         row = {"Color": color}
+        total = 0
+
         for size in sizes:
-            row[size] = split_data[color][size]
+            qty = split_data[color][size]
+            row[size] = qty
+            total += qty
+
+        row["Total"] = total  # ✅ Row total
         table_data.append(row)
 
     st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
