@@ -1,5 +1,5 @@
 import streamlit as st
-from packing_engine import size_split, packing_engine
+from packing_engine import packing_engine
 import pandas as pd
 import os
 
@@ -13,24 +13,14 @@ st.set_page_config(
 )
 
 # ------------------------------------------------
-# MEN OLOGY STYLE
+# STYLE
 # ------------------------------------------------
 
 st.markdown("""
 <style>
-
-body {
-    background-color:#f4f6fa;
-}
-
-h1 {
-    color:#154c79;
-}
-
-h2,h3 {
-    color:#154c79;
-}
-
+body { background-color:#f4f6fa; }
+h1 { color:#154c79; }
+h2,h3 { color:#154c79; }
 .stButton>button {
     background-color:#154c79;
     color:white;
@@ -40,15 +30,8 @@ h2,h3 {
     font-size:16px;
     border:none;
 }
-
-.stButton>button:hover {
-    background-color:#0e3554;
-}
-
-.block-container {
-    padding-top:1.5rem;
-}
-
+.stButton>button:hover { background-color:#0e3554; }
+.block-container { padding-top:1.5rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -63,7 +46,8 @@ with col1:
 
 with col2:
     logo_path = os.path.join(os.getcwd(), "logo.webp")
-    st.image(logo_path, width=200)
+    if os.path.exists(logo_path):
+        st.image(logo_path, width=200)
 
 st.divider()
 
@@ -73,56 +57,70 @@ st.divider()
 
 order_id = st.text_input("Order ID / Style Number")
 
-st.markdown("## Input Data")
-
 # ------------------------------------------------
-# COLOR INPUT
+# COLOR & SIZE INPUT
 # ------------------------------------------------
 
-with st.expander("Color Quantities", expanded=True):
+st.markdown("## Define Colors and Sizes")
 
-    num_colors = st.number_input("Number of Colors", min_value=1, step=1)
+c1, c2 = st.columns(2)
 
-    colors = []
-    pieces = []
+num_colors = c1.number_input("Number of Colors", min_value=1, step=1)
+num_sizes = c2.number_input("Number of Sizes", min_value=1, step=1)
 
-    for i in range(num_colors):
+colors = []
+sizes = []
 
-        c1, c2 = st.columns(2)
+st.markdown("### Enter Color Names")
+for i in range(num_colors):
+    colors.append(st.text_input(f"Color {i+1}", key=f"color{i}"))
 
-        color = c1.text_input(f"Color {i+1}", key=f"color{i}")
-        piece = c2.number_input(f"Pieces {i+1}", min_value=0, key=f"piece{i}")
+st.markdown("### Enter Size Names")
+for i in range(num_sizes):
+    sizes.append(st.text_input(f"Size {i+1}", key=f"size{i}"))
 
-        colors.append(color)
-        pieces.append(piece)
+st.divider()
 
 # ------------------------------------------------
-# SIZE INPUT
+# STABLE INPUT UI (NO TABLE)
 # ------------------------------------------------
 
-with st.expander("Size Ratios", expanded=True):
+st.markdown("## Enter Quantity (Color × Size)")
 
-    num_sizes = st.number_input("Number of Sizes", min_value=1, step=1)
+if "saved_data" not in st.session_state:
+    st.session_state.saved_data = {}
 
-    sizes = []
-    ratios = []
+if all(colors) and all(sizes):
 
-    for i in range(num_sizes):
+    with st.form("matrix_form"):
 
-        c1, c2 = st.columns(2)
+        input_data = {}
 
-        size = c1.text_input(f"Size {i+1}", key=f"size{i}")
+        for color in colors:
 
-        ratio = c2.number_input(
-            f"Ratio {i+1}",
-            min_value=0.1,
-            step=0.1,
-            format="%.2f",
-            key=f"ratio{i}"
-        )
+            st.markdown(f"### {color}")
 
-        sizes.append(size)
-        ratios.append(ratio)
+            cols = st.columns(len(sizes))
+            row = {}
+
+            for i, size in enumerate(sizes):
+
+                row[size] = cols[i].number_input(
+                    f"{size}",
+                    min_value=0,
+                    key=f"{color}_{size}"
+                )
+
+            input_data[color] = row
+
+        submitted = st.form_submit_button("Save Matrix")
+
+        if submitted:
+            st.session_state.saved_data = input_data
+            st.success("Data saved successfully!")
+
+else:
+    st.info("Enter all colors and sizes first.")
 
 st.divider()
 
@@ -132,14 +130,18 @@ st.divider()
 
 if st.button("Generate Packing Plan"):
 
-    split_data = size_split(colors, pieces, sizes, ratios)
+    if not st.session_state.saved_data:
+        st.error("Please fill and save the data first.")
+        st.stop()
+
+    split_data = st.session_state.saved_data
 
     results = packing_engine(split_data)
 
     st.markdown(f"## Packing Plan - Order {order_id}")
 
     # ------------------------------------------------
-    # SIZE SPLIT MATRIX
+    # SIZE SPLIT DISPLAY
     # ------------------------------------------------
 
     st.markdown("### Size Split Matrix")
@@ -147,21 +149,12 @@ if st.button("Generate Packing Plan"):
     table_data = []
 
     for color in colors:
-
         row = {"Color": color}
-
         for size in sizes:
             row[size] = split_data[color][size]
-
         table_data.append(row)
 
-    df = pd.DataFrame(table_data)
-
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True
-    )
+    st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
 
     st.divider()
 
@@ -175,26 +168,19 @@ if st.button("Generate Packing Plan"):
 
     for r in results:
 
-        st.markdown(
-            f"""
-            <div style="
-            background-color:white;
-            padding:20px;
-            border-radius:10px;
-            border-left:6px solid #154c79;
-            margin-bottom:15px;
-            ">
-
-            <h3>Size {r['size'].upper()}</h3>
-
-            <b>True Combo</b><br>
-            Boxes: {r['true_boxes']}<br>
-            Structure: {r['true_structure']}
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+        st.markdown(f"""
+        <div style="
+        background-color:white;
+        padding:20px;
+        border-radius:10px;
+        border-left:6px solid #154c79;
+        margin-bottom:15px;">
+        <h3>Size {r['size'].upper()}</h3>
+        <b>True Combo</b><br>
+        Boxes: {r['true_boxes']}<br>
+        Structure: {r['true_structure']}
+        </div>
+        """, unsafe_allow_html=True)
 
         excel_rows.append({
             "Order ID": order_id,
@@ -205,11 +191,8 @@ if st.button("Generate Packing Plan"):
         })
 
         if r["secondary"]:
-
             st.warning("Secondary Combination")
-
             for s in r["secondary"]:
-
                 st.write(f"Boxes: {s['boxes']}")
                 st.write(f"Structure: {s['structure']}")
 
@@ -222,24 +205,21 @@ if st.button("Generate Packing Plan"):
                 })
 
         st.markdown("**Remaining Pieces**")
-
         for color, qty in r["remaining"].items():
             st.write(f"{color}: {qty}")
 
         st.divider()
 
     # ------------------------------------------------
-    # EXPORT TO EXCEL
+    # EXPORT
     # ------------------------------------------------
 
     excel_df = pd.DataFrame(excel_rows)
-
     file_name = f"Packing_Plan_{order_id}.xlsx"
 
     excel_df.to_excel(file_name, index=False)
 
     with open(file_name, "rb") as f:
-
         st.download_button(
             label="Download Packing Plan (Excel)",
             data=f,
